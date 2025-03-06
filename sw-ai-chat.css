@@ -140,12 +140,10 @@ body.chat-full .chat-popup {
     background:#0D2400FA;
 }
 body.chat-full .ai-head img {
-    width:80px;
-    height:80px;
+    width:60px!important;
+    height:60px!important;
 }
-selector span {
-    cursor:pointer;
-}
+
 /* Chat full background image */
 /*body.chat-full .chat-box:before {
     background-image: url(https://cloudie.so/wp-content/uploads/2024/09/cloudie-nft-002.webp);
