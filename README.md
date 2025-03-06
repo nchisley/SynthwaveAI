@@ -9,3 +9,9 @@ Welcome to SynthiaAI — a next-generation AI platform designed to streamline ta
 - Natural Language Processing (NLP): Understand and interpret user inputs accurately.
 - Predictive Analytics: Make data-driven decisions with actionable insights.
 - Seamless Integrations: Connect easily with CRM systems, websites, and third-party apps.
+
+### 🤝 Contributing
+**We welcome contributions!**
+- Fork the repo.
+- Create a feature branch.
+- Submit a pull request.
