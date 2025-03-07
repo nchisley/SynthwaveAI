@@ -20,6 +20,7 @@ If no matching records are found, try alternative search criteria. Example 1: La
 
 # Output
 Query the "{{ $json.databaseName }}" Notion database to find relevant records or summarize insights based on multiple records.
+Do not quote Notion URLs from your knowledgebase.
 Return concise, user-friendly results or summaries.
 For large sets, show top results by default and offer more if needed.
 If there are no knowledgebase entries do not state that there are no records, simply give the best response based on who you are and what you already know.

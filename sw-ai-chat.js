@@ -9,12 +9,94 @@ document.addEventListener('DOMContentLoaded', () => {
   const HISTORY_KEY = "chatHistory";
   const HISTORY_EXPIRATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
+  // Popup persistence setup (jQuery required)
+  jQuery(document).ready(function($) {
+    var popupId = 932; // Popup ID for Synthia chat
+
+    if (typeof elementorProFrontend === 'undefined') {
+      console.error('Elementor Pro frontend module not loaded');
+      return;
+    }
+
+    function checkPopupState() {
+      console.log('Checking popup state...');
+      console.log('Hash:', window.location.hash);
+      console.log('popupClosed:', sessionStorage.getItem('popupClosed'));
+      console.log('popupShown:', sessionStorage.getItem('popupShown'));
+
+      if (sessionStorage.getItem('popupClosed') !== 'true' && 
+          (window.location.hash === '#synthia' || sessionStorage.getItem('popupShown') === 'true')) {
+        console.log('Showing popup with ID:', popupId);
+        elementorProFrontend.modules.popup.showPopup({ id: popupId });
+        sessionStorage.setItem('popupShown', 'true');
+      } else {
+        console.log('Popup not shown - either closed or no trigger');
+      }
+    }
+
+    $('a[href="#synthia"]').on('click', function(e) {
+      e.preventDefault();
+      console.log('Link with #synthia clicked');
+      elementorProFrontend.modules.popup.showPopup({ id: popupId });
+      sessionStorage.setItem('popupShown', 'true');
+      sessionStorage.removeItem('popupClosed');
+    });
+
+    $(document).on('elementor/popup/hide', function(event, id, instance) {
+      console.log('Popup hide event triggered, ID:', id);
+      if (id === popupId) {
+        console.log('Popup closed, updating storage');
+        sessionStorage.setItem('popupClosed', 'true');
+        sessionStorage.removeItem('popupShown');
+      }
+    });
+
+    console.log('Page loaded, checking initial state');
+    checkPopupState();
+
+    $(window).on('hashchange', function() {
+      console.log('Hash changed');
+      checkPopupState();
+    });
+  });
+
   // Function to add target="_blank" to any <a> tags.
   function addTargetToLinks(text) {
-    return text.replace(/<a\s+(?!.*?target=["']_blank["'])([^>]+)>/gi, '<a $1 target="_blank">');
-  }
+    return text.replace(/<a\s+([^>]+)>/gi, (match, attributes) => {
+      const hrefMatch = attributes.match(/href=["']([^"']+)["']/i);
+      if (hrefMatch && hrefMatch[1]) {
+        const href = hrefMatch[1].toLowerCase();
+        console.log('Processing href:', href);
 
-  // Load chat history from localStorage if it's within 7 days.
+        const isInternal = (
+          href.includes("synthwave.so") || 
+          href.startsWith("/") || 
+          href.startsWith("./") || 
+          href.startsWith("../") || 
+          (!href.includes("://") && !href.startsWith("mailto:"))
+        );
+        console.log('isInternal:', isInternal);
+
+        if (isInternal) {
+          const cleanedAttributes = attributes.replace(/\s*target\s*=\s*["']_blank["']/gi, '');
+          console.log('Internal link, cleaned attributes:', `<a ${cleanedAttributes}>`);
+          return `<a ${cleanedAttributes}>`;
+        } else {
+          if (/target\s*=\s*["']_blank["']/i.test(attributes)) {
+            console.log('External link with existing target="_blank":', match);
+            return match;
+          } else {
+            console.log('External link, adding target="_blank":', `<a ${attributes} target="_blank">`);
+            return `<a ${attributes} target="_blank">`;
+          }
+        }
+      } else {
+        console.log('No href found in:', match);
+      }
+      return match;
+    });
+  }  
+
   function loadChatHistory() {
     const stored = localStorage.getItem(HISTORY_KEY);
     if (!stored) return [];
@@ -32,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Save chat history to localStorage with current timestamp.
   function saveChatHistory(messages) {
     localStorage.setItem(HISTORY_KEY, JSON.stringify({
       timestamp: Date.now(),
@@ -40,8 +121,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }));
   }
 
-  // Append a message bubble to the chat log and update localStorage.
-  // User messages receive the "user-text" class and bot messages receive the "agent-text" class.
   function appendMessage(sender, text) {
     const chatLog = document.getElementById('chat-log');
     if (!chatLog) return;
@@ -72,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
     saveChatHistory(history);
   }
 
-  // Function to initialize chat event listeners, load history, etc.
   function initChat() {
     const chatContainer = document.getElementById('chat-container');
     const chatForm = document.getElementById('chat-form');
@@ -185,7 +263,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Function to save the chat history to a text file and prompt the native save dialog.
   function saveChatToFile() {
     const chatLog = document.getElementById('chat-log');
     if (!chatLog) return;
@@ -234,7 +311,6 @@ Copyright: All rights reserved.
     window.URL.revokeObjectURL(url);
   }
 
-  // MutationObserver to attach listener when "save-chat" element appears.
   function observeSaveChatButton() {
     const observer = new MutationObserver((mutations, obs) => {
       const saveChatButton = document.getElementById('save-chat');
@@ -244,7 +320,7 @@ Copyright: All rights reserved.
           saveChatToFile();
         });
         console.log("Save Chat button listener attached via MutationObserver.");
-        obs.disconnect(); // Stop observing once attached.
+        obs.disconnect();
       }
     });
     observer.observe(document.body, { childList: true, subtree: true });

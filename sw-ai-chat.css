@@ -115,6 +115,9 @@
     align-self:flex-start;
     animation: pulse 1.5s infinite;
 }
+.dialog-close-button:focus {
+    outline: none !important;
+}
 
 /* CHAT FULL WINDOW */
 body.chat-full #elementor-popup-modal-932 .dialog-message {
