@@ -1,129 +1,161 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("chatPersist.js: DOM fully loaded.");
-  
-    if (typeof jQuery === 'undefined') {
-      console.error("chatPersist.js: jQuery is required but not found. Script will not run.");
-      return;
+  console.log("chatPersist.js: DOM fully loaded.");
+
+  if (typeof jQuery === 'undefined') {
+    console.error("chatPersist.js: jQuery is required but not found. Script will not run.");
+    return;
+  }
+
+  jQuery(document).ready(function($) {
+    const popupId = 932;
+    const MAX_RETRIES = 20; // Reduced retries for efficiency
+    const CHAT_RETRIES = 20; // Chat container retries
+
+    // Utility to wait for an element with a timeout
+    function waitForElement(selector, callback, maxAttempts = MAX_RETRIES, attempt = 0) {
+      const $element = $(selector);
+      if ($element.length) {
+        callback($element);
+      } else if (attempt < maxAttempts) {
+        setTimeout(() => waitForElement(selector, callback, maxAttempts, attempt + 1), 100);
+      } else {
+        console.error(`chatPersist.js: Element ${selector} not found after ${maxAttempts} retries.`);
+      }
     }
-  
-    jQuery(document).ready(function($) {
-      const popupId = 932;
-      const MAX_RETRIES = 50;
-      let retryCount = 0;
-  
-      // Debounce utility
-      function debounce(func, wait) {
-        let timeout;
-        return function (...args) {
-          clearTimeout(timeout);
-          timeout = setTimeout(() => func.apply(this, args), wait);
-        };
-      }
-  
-      // Wait for Elementor Pro with retry limit
-      function waitForElementorPro(callback) {
-        if (typeof elementorProFrontend !== 'undefined' &&
-            typeof elementorProFrontend.modules !== 'undefined' &&
-            typeof elementorProFrontend.modules.popup !== 'undefined') {
-          console.log("chatPersist.js: Elementor Pro detected.");
-          callback();
-        } else if (retryCount < MAX_RETRIES) {
-          retryCount++;
-          console.log(`chatPersist.js: Waiting for Elementor Pro (attempt ${retryCount}/${MAX_RETRIES})...`);
-          setTimeout(() => waitForElementorPro(callback), 100);
-        } else {
-          console.error("chatPersist.js: Elementor Pro not detected after max retries. Using fallback.");
-          callback(true);
-        }
-      }
-  
-      // Show popup with reinitialization
-      function showPopup(isFallbackMode = false) {
+
+    // Show the popup with robust fallback
+    function showPopup() {
+      const $popup = $(`[data-elementor-id="${popupId}"]`);
+      let popupShown = false;
+
+      // Try Elementor Pro first
+      if (typeof elementorProFrontend?.modules?.popup?.showPopup === 'function') {
         try {
-          if (!isFallbackMode && elementorProFrontend?.modules?.popup?.showPopup) {
-            elementorProFrontend.modules.popup.showPopup({ id: popupId });
-          } else {
-            const $popup = $(`[data-elementor-id="${popupId}"]`);
-            if ($popup.length) {
-              $popup.show().addClass('elementor-popup-modal--active dialog-visible');
-              console.log("chatPersist.js: Fallback - Popup shown via jQuery.");
-            } else {
-              console.warn("chatPersist.js: Popup element not found for ID", popupId);
-              return;
-            }
-          }
-          sessionStorage.setItem('popupShown', 'true');
-          setTimeout(() => reinitializeChat(), 100);
+          console.log("chatPersist.js: Attempting to show popup with Elementor Pro...");
+          elementorProFrontend.modules.popup.showPopup({ id: popupId });
+          popupShown = $popup.length && $popup.is(':visible');
+          if (popupShown) console.log("chatPersist.js: Popup shown via Elementor Pro.");
         } catch (error) {
-          console.error("chatPersist.js: Error triggering popup:", error);
+          console.warn("chatPersist.js: Elementor Pro failed:", error);
         }
       }
-  
-      // Reinitialize chat UI with vanilla CustomEvent
-      function reinitializeChat() {
-        const chatContainer = document.getElementById('chat-container');
-        if (!chatContainer || chatContainer.offsetParent === null) {
-          console.warn("chatPersist.js: Chat container not visible yet, retrying...");
-          setTimeout(reinitializeChat, 100);
-          return;
-        }
-        const reinitializeEvent = new CustomEvent('chatReinitialize');
-        document.dispatchEvent(reinitializeEvent);
-        console.log("chatPersist.js: Dispatched chatReinitialize event.");
-      }
-  
-      // Check popup state
-      function checkPopupState(isFallbackMode = false) {
-        if (sessionStorage.getItem('popupClosed') !== 'true' &&
-            (window.location.hash === '#synthia' || sessionStorage.getItem('popupShown') === 'true')) {
-          showPopup(isFallbackMode);
-        }
-      }
-  
-      const debouncedCheckPopupState = debounce(checkPopupState, 200);
-  
-      // Handle link clicks to open popup
-      function attachLinkListener() {
-        const $links = $('a[href="#synthia"]');
-        if ($links.length === 0) console.warn("chatPersist.js: No links with href='#synthia' found.");
-        $links.off('click.synthia').on('click.synthia', function(e) {
-          e.preventDefault();
-          showPopup();
-          sessionStorage.removeItem('popupClosed');
+
+      // Fallback to jQuery if Elementor fails or popup isn’t visible
+      if (!popupShown) {
+        waitForElement(`[data-elementor-id="${popupId}"]`, ($popup) => {
+          $popup.show().addClass('elementor-popup-modal--active dialog-visible');
+          if ($popup.is(':visible')) {
+            console.log("chatPersist.js: Popup shown via jQuery fallback.");
+            popupShown = true;
+          } else {
+            console.error("chatPersist.js: Popup element found but not visible after jQuery attempt.");
+          }
+          finalizePopup(popupShown);
         });
+      } else {
+        finalizePopup(popupShown);
       }
-  
-      // Handle popup hide
-      $(document).off('elementor/popup/hide.synthia').on('elementor/popup/hide.synthia', function(event, id) {
+    }
+
+    // Finalize popup state and reinitialize chat
+    function finalizePopup(popupShown) {
+      if (popupShown) {
+        sessionStorage.setItem('chatPopupActive', 'true');
+        reinitializeChat();
+      }
+    }
+
+    // Reinitialize chat with retry logic
+    function reinitializeChat(retryAttempt = 0) {
+      waitForElement('#chat-container', ($chatContainer) => {
+        if ($chatContainer.is(':visible')) {
+          const event = new CustomEvent('chatReinitialize');
+          document.dispatchEvent(event);
+          console.log("chatPersist.js: Chat reinitialized.");
+        } else if (retryAttempt < CHAT_RETRIES) {
+          console.warn(`chatPersist.js: Chat container not visible, retrying (${retryAttempt + 1}/${CHAT_RETRIES})...`);
+          setTimeout(() => reinitializeChat(retryAttempt + 1), 100);
+        } else {
+          console.error("chatPersist.js: Chat container not visible after retries.");
+        }
+      }, CHAT_RETRIES, retryAttempt);
+    }
+
+    // Open popup and set session tag
+    function openPopup() {
+      console.log("chatPersist.js: Opening popup...");
+      showPopup();
+    }
+
+    // Close popup and clear session tag
+    function closePopup() {
+      const $popup = $(`[data-elementor-id="${popupId}"]`);
+      if ($popup.length) {
+        $popup.hide().removeClass('elementor-popup-modal--active dialog-visible');
+        console.log("chatPersist.js: Popup closed via jQuery.");
+      }
+      sessionStorage.removeItem('chatPopupActive');
+      if (window.location.hash === '#synthia') {
+        history.replaceState(null, null, window.location.pathname);
+        console.log("chatPersist.js: Removed #synthia from URL.");
+      }
+    }
+
+    // Simulate #synthia on page load if tagged
+    function checkPopupOnLoad() {
+      if (sessionStorage.getItem('chatPopupActive') === 'true') {
+        console.log("chatPersist.js: Chat popup tagged as active, simulating #synthia...");
+        if (window.location.hash !== '#synthia') {
+          window.location.hash = '#synthia';
+        } else {
+          openPopup(); // Direct trigger if hash already present
+        }
+      }
+    }
+
+    // Event listeners
+    function setupListeners() {
+      // Open popup on #synthia links
+      $('a[href="#synthia"]').on('click.synthia', (e) => {
+        e.preventDefault();
+        openPopup();
+      });
+
+      // Close popup on Elementor hide event
+      $(document).on('elementor/popup/hide.synthia', (event, id) => {
         if (id === popupId) {
-          sessionStorage.setItem('popupClosed', 'true');
-          sessionStorage.removeItem('popupShown');
-          if (window.location.hash === '#synthia') {
-            history.replaceState(null, null, window.location.pathname);
-            console.log("chatPersist.js: Removed #synthia from URL.");
-          }
+          console.log("chatPersist.js: Elementor popup hide detected.");
+          closePopup();
         }
       });
-  
-      // Preserve popup state on navigation
-      function attachNavigationListener() {
-        const $navLinks = $('a:not([href="#synthia"])');
-        if ($navLinks.length === 0) console.warn("chatPersist.js: No navigation links found.");
-        $navLinks.off('click.synthia').on('click.synthia', function(e) {
-          if (sessionStorage.getItem('popupShown') === 'true' && !this.href.includes('#')) {
-            e.preventDefault();
-            window.location.href = this.href + '#synthia';
-          }
-        });
-      }
-  
-      // Initialize
-      waitForElementorPro((isFallbackMode) => {
-        attachLinkListener();
-        attachNavigationListener();
-        checkPopupState(isFallbackMode);
-        $(window).off('hashchange.synthia').on('hashchange.synthia', () => debouncedCheckPopupState(isFallbackMode));
-        console.log("chatPersist.js: Initialization complete.");
+
+      // Navigation: append #synthia if popup active
+      $('a:not([href="#synthia"]):not([href^="javascript"])').on('click.synthia', (e) => {
+        const href = e.currentTarget.href;
+        if (sessionStorage.getItem('chatPopupActive') === 'true' && href && !href.includes('#')) {
+          e.preventDefault();
+          console.log("chatPersist.js: Navigation detected, appending #synthia to", href);
+          window.location.href = href + '#synthia';
+        }
       });
+
+      // Hash change triggers popup
+      $(window).on('hashchange.synthia', () => {
+        if (window.location.hash === '#synthia' && sessionStorage.getItem('chatPopupActive') === 'true') {
+          console.log("chatPersist.js: Hashchange to #synthia detected, opening popup...");
+          openPopup();
+        }
+      });
+    }
+
+    // Initialize
+    console.log("chatPersist.js: Starting initialization...");
+    setupListeners();
+    checkPopupOnLoad(); // Check immediately on load
+    $(document).on('DOMContentLoaded elementor/loaded', () => {
+      console.log("chatPersist.js: Page fully loaded, rechecking popup state...");
+      checkPopupOnLoad();
     });
+    console.log("chatPersist.js: Initialization complete.");
   });
+});
